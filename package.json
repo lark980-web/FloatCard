@@ -1,6 +1,6 @@
 {
   "name": "dsh-tendedero",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "把 DSH 的追问（ask_user_question）做成晾衣绳卡片，吊在窗口上方：鼠标停到顶边即垂下，卡片轻摆，可直接作答。Inspired by alejandrobujan/tendedero.",
   "type": "module",
   "main": "lib/index.js",
