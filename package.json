@@ -1,0 +1,49 @@
+{
+  "name": "dsh-tendedero",
+  "version": "0.4.2",
+  "description": "把 DSH 的追问（ask_user_question）做成晾衣绳卡片，吊在窗口上方：鼠标停到顶边即垂下，卡片轻摆，可直接作答。Inspired by alejandrobujan/tendedero.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json",
+    "./remote": "./lib/remote.js"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md"
+  ],
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-user-questions",
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ]
+    }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "tendedero",
+    "questions",
+    "ui"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/dsh-typert-protocol": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-session": "0.2.2-rc.1",
+    "zod": "^4.0.0"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  }
+}

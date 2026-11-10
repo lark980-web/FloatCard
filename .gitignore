@@ -1,0 +1,9 @@
+node_modules/
+*.log
+.DS_Store
+test/round-*.mjs
+test/matrix*.txt
+test/zone.txt
+test/shots/
+test/restore-window.ps1
+npm-cache/

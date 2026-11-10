@@ -1,0 +1,6 @@
+# dsh-tendedero bundle layer: config entry + authenticated Remote half.
+- insert:
+    - id: dsh-tendedero
+      name: dsh-tendedero
+    - id: dsh-tendedero-remote
+      name: dsh-tendedero/remote

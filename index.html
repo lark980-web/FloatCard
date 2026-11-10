@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>dsh-tendedero demo</title>
+<style>
+:root {
+  --dsw-alias-bg-base:#f7f7f5; --dsw-alias-bg-layer-1:#ffffff; --dsw-alias-bg-layer-2:#f1efe9;
+  --dsw-alias-label-primary:#23262c; --dsw-alias-label-secondary:#70757e;
+  --dsw-alias-border-l1:#ded9cd; --dsw-alias-brand-primary:#2f6fed; --dsw-alias-state-warn-primary:#e5a13c;
+  color-scheme: light;
+}
+:root[data-mode="dark"] {
+  --dsw-alias-bg-base:#17181c; --dsw-alias-bg-layer-1:#23262c; --dsw-alias-bg-layer-2:#2c3038;
+  --dsw-alias-label-primary:#e9ebef; --dsw-alias-label-secondary:#9aa1ab;
+  --dsw-alias-border-l1:#3d424b; --dsw-alias-brand-primary:#7cabff;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin:0; background:var(--dsw-alias-bg-base); color:var(--dsw-alias-label-primary); font-family:system-ui,"Segoe UI",sans-serif; height:100vh; overflow:hidden; }
+.titlebar { height:38px; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--dsw-alias-label-secondary); border-bottom:1px solid var(--dsw-alias-border-l1); background:var(--dsw-alias-bg-layer-1); }
+.chat { max-width:720px; margin:24px auto; padding:0 20px; }
+.bubble { border-radius:12px; padding:12px 16px; margin-bottom:14px; font-size:14px; line-height:1.7; }
+.user { background:var(--dsw-alias-brand-primary); color:#fff; margin-left:120px; }
+.bot { background:var(--dsw-alias-bg-layer-1); border:1px solid var(--dsw-alias-border-l1); }
+.controls { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); display:flex; gap:8px; flex-wrap:wrap; justify-content:center; background:var(--dsw-alias-bg-layer-1); border:1px solid var(--dsw-alias-border-l1); padding:10px 12px; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.15); z-index:50; }
+.controls button { font:inherit; font-size:12px; padding:6px 10px; border-radius:8px; border:1px solid var(--dsw-alias-border-l1); background:var(--dsw-alias-bg-layer-2); color:var(--dsw-alias-label-primary); cursor:pointer; }
+.log { position:fixed; bottom:80px; left:16px; font-size:11px; color:var(--dsw-alias-label-secondary); max-width:340px; white-space:pre-wrap; }
+</style>
+</head>
+<body>
+<div class="titlebar">DeepSeek Harness — demo（把鼠标停到顶边中间，或点顶部小夹子）</div>
+<div class="chat">
+  <div class="bubble user">帮我整理一下这份数据，需要确认几个问题。</div>
+  <div class="bubble bot">好的，我已经完成了初步整理。有几个问题需要你确认——它们现在晾在窗口上方，把鼠标停到顶边即可看到。</div>
+  <div class="bubble user">顺便看看暗色主题的效果。</div>
+  <div class="bubble bot">没问题。卡片会跟随主题变量自动适配明暗。</div>
+</div>
+<div class="log" id="log"></div>
+<div class="controls">
+  <button id="b1">挂一个追问（continued）</button>
+  <button id="b2">挂一个等待中（open）</button>
+  <button id="b3">挂多问题批次</button>
+  <button id="b4">全部结算</button>
+  <button id="b6">结束回合 → 自动生成追问</button>
+  <button id="b7">模拟生成失败</button>
+  <button id="b8">另一会话生成一批</button>
+  <button id="b9">模拟重连</button>
+  <button id="b10">s2 悄悄变运行中</button>
+  <button id="b11">清空本地批次记录</button>
+  <button id="b5">明 / 暗</button>
+</div>
+<script>
+const logEl = document.getElementById("log");
+const log = (s) => { logEl.textContent = (logEl.textContent + "\n" + s).split("\n").slice(-6).join("\n"); console.log(s); };
+
+// ---- mock projection state ----
+let seq = 0;
+const projections = { s1: { active: [], settled: [] }, s2: { active: [], settled: [] } };
+if ((new URLSearchParams(location.hash.slice(1)).get("question") ?? "") === "1") {
+  projections.s1.active.push({ callId: "seed-q", state: "continued", questions: [{ id: "q1", question: "重载前就挂着的提问", options: [{ label: "继续" }] }] });
+}
+const state = projections.s1;
+const inboxState = { "next-step": [], "next-turn": [] };
+const subs = new Set(), listSubs = new Set();
+const notify = () => { for (const cb of [...subs]) cb(); };
+const faceFor = (id) => ({ getSnapshot: () => projections[id], subscribe: (cb) => { subs.add(cb); return () => subs.delete(cb); } });
+const inboxFace = { getSnapshot: () => inboxState, subscribe: (cb) => { subs.add(cb); return () => subs.delete(cb); } };
+const sessionsById = { s1: { id: "s1", displayTitle: "数据整理 · 当前会话" }, s2: { id: "s2", displayTitle: "另一个会话" } };
+const listStore = { getSnapshot: () => ({ phase: "ready", byId: sessionsById }), subscribe: (cb) => { listSubs.add(cb); return () => listSubs.delete(cb); } };
+
+const initialRunning = new URLSearchParams(location.hash.slice(1)).get("running") ?? "";
+const runningMap = new Map([["s1", { running: initialRunning === "s1" }], ["s2", { running: initialRunning === "s2" }]]);
+const statusListeners = new Set();
+const statusStore = {
+  getSnapshot: () => runningMap,
+  subscribe: (cb) => { statusListeners.add(cb); return () => statusListeners.delete(cb); }
+};
+window.setRunning = (id, v) => { runningMap.set(id, { running: v }); for (const cb of [...statusListeners]) cb(); };
+const handlers = {};
+window.__debug = { statusListeners, runningMap, handlers, get mockCtx() { return mockCtx; } };
+window.__fire = (evt) => { for (const cb of handlers[evt] ?? []) cb(); log("fire " + evt); };
+window.__batchStore = () => JSON.parse(localStorage.getItem("dsh-tendedero.batch.v1") ?? "{}");
+window.__clearBatches = () => { localStorage.removeItem("dsh-tendedero.batch.v1"); log("batches cleared"); };
+window.__silentRunning = (id, v) => { runningMap.set(id, { running: v }); notify(); };
+const mockCtx = {
+  sessions: {
+    list: listStore,
+    binding: (id) => sessionsById[id] ? { session: { projections: { faceOf: (n) => n === "inbox" ? inboxFace : faceFor(id) } } } : undefined
+  },
+  uiSession: { sessionStatus: statusStore },
+  remote: {
+    $mount: async (contrib) => { log("$mount " + contrib.package); return () => {}; },
+    tendedero: { suggest: async (sid) => {
+      await new Promise(r => setTimeout(r, 500));
+      if (window.__failNext) { window.__failNext = false; return { ok: false, error: { message: "模型 magpie/group/smart-split 不可用：缺少 API key" } }; }
+      const pool = [
+        ["这些数据能不能再按周汇总一次？", "帮我把结论画成一张图", "把结果导出并同步到任务里"],
+        ["重复行是按什么规则判定的？", "金额列要不要统一成两位小数？", "汇总口径按自然周还是滚动七天？"],
+        ["把清洗步骤存成一个可复用的脚本", "异常值单独列一张表", "最后给我一段口径说明的文案"]
+      ];
+      window.__batch = ((window.__batch ?? 0) + 1) % pool.length;
+      return { ok: true, value: { questions: pool[window.__batch] } };
+    } },
+    session: { prompt: async (request) => { log("prompt: " + request.content[0].text); return { ok: true, value: { accepted: true } }; } },
+    userQuestions: { answer: async (sid, callId, batch) => {
+    log("answer(" + callId + ") = " + JSON.stringify(batch));
+    state.active = state.active.filter(r => r.callId !== callId);
+    state.settled.push({ callId, answers: batch.answers });
+    setTimeout(notify, 150);
+    return { ok: true, value: true };
+  } } },
+  uiWorkspace: { openSession: (id) => log("openSession " + id), selection: { getSnapshot: () => ({ sessionId: "s1" }) } },
+  on: (evt, cb) => { (handlers[evt] ??= []).push(cb); return () => { handlers[evt] = (handlers[evt] ?? []).filter(f => f !== cb); }; },
+  effect: (fn, label) => { const d = fn(); window.__disposeTendedero = d; log("effect: " + label); }
+};
+
+// Cordis only answers a property read for keys the plugin declared in inject; mirror that here.
+let declaredInject = new Set();
+const RESERVED = new Set(["then", "catch", "finally", "toJSON", Symbol.toPrimitive, Symbol.iterator, "constructor"]);
+function guard(target, prefix) {
+  return new Proxy(target, {
+    get(obj, prop) {
+      if (typeof prop === "symbol" || RESERVED.has(prop)) return obj[prop];
+      if (prop === "$mount" || prop === "$on" || String(prop).startsWith("$")) return obj[prop];
+      if (!declaredInject.has(prefix === "" ? String(prop) : prefix + "." + String(prop))) {
+        if (obj[prop] !== undefined) throw new Error('cannot get property "' + (prefix ? prefix + "." : "") + String(prop) + '" without inject');
+        return obj[prop];
+      }
+      return obj[prop];
+    }
+  });
+}
+const services = {
+  "remote.tendedero": mockCtx.remote.tendedero,
+  "remote.session": mockCtx.remote.session,
+  "remote.userQuestions": mockCtx.remote.userQuestions,
+  "userQuestionPanels": { reveal: (s, c) => log("reveal panel " + c) }
+};
+mockCtx.get = (key) => services[key];
+mockCtx.remote = guard(mockCtx.remote, "remote");
+const guardedCtx = mockCtx;
+window.__ModuleLoader__ = { load: ({ id, factory }) => {
+  log("registered " + id);
+  const mod = factory(() => { throw new Error("no externals expected"); });
+  declaredInject = new Set(mod.inject ?? []);
+  log("inject: " + [...declaredInject].join(", "));
+  mod.apply(guardedCtx);
+} };
+
+function addQuestions(rows) {
+  for (const r of rows) state.active.push(r);
+  notify();
+}
+document.getElementById("b1").onclick = () => addQuestions([{
+  callId: "call-" + (++seq), state: "continued",
+  questions: [{ id: "q1", question: "整理好的数据要保存成什么格式？", header: "导出格式",
+    options: [
+      { label: "Excel（.xlsx）", description: "带格式的表格，方便继续编辑" },
+      { label: "CSV", description: "纯文本，通用性最好" },
+      { label: "JSON", description: "结构化数据，方便程序读取" }
+    ] }]
+}]);
+document.getElementById("b2").onclick = () => addQuestions([{
+  callId: "call-" + (++seq), state: "open",
+  questions: [{ id: "q1", question: "检测到重复行，要不要在导出前自动去重？", options: [ { label: "去重" }, { label: "保留原样" } ] }]
+}]);
+document.getElementById("b3").onclick = () => addQuestions([{
+  callId: "call-" + (++seq), state: "continued",
+  questions: [
+    { id: "qa", question: "要包含哪些列？（可多选）", multiSelect: true, options: [ { label: "姓名" }, { label: "日期" }, { label: "金额" }, { label: "备注" } ] },
+    { id: "qb", question: "日期用什么格式？", options: [ { label: "YYYY-MM-DD" }, { label: "YYYY/MM/DD" }, { label: "时间戳" } ] }
+  ]
+}, {
+  callId: "call-" + (++seq), state: "continued",
+  questions: [{ id: "q1", question: "这个结果要同步到另一个会话的任务里吗？", options: [ { label: "要" }, { label: "不用" } ] }]
+}]);
+document.getElementById("b4").onclick = () => { state.active = []; notify(); };
+document.getElementById("b6").onclick = () => { window.setRunning("s1", true); setTimeout(() => window.setRunning("s1", false), 400); };
+document.getElementById("b7").onclick = () => { window.__failNext = true; window.setRunning("s1", true); setTimeout(() => window.setRunning("s1", false), 400); };
+document.getElementById("b8").onclick = () => { window.setRunning("s2", true); setTimeout(() => window.setRunning("s2", false), 400); };
+document.getElementById("b9").onclick = () => window.__fire("connection/reset");
+document.getElementById("b10").onclick = () => window.__silentRunning("s2", true);
+document.getElementById("b11").onclick = () => window.__clearBatches();
+document.getElementById("b5").onclick = () => {
+  const el = document.documentElement;
+  el.dataset.mode = el.dataset.mode === "dark" ? "" : "dark";
+};
+</script>
+<script src="./lib/client.js"></script>
+</body>
+</html>
