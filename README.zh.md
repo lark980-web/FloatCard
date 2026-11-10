@@ -8,7 +8,9 @@ description: "DSH 的追问晾在窗口上方：Agent 提问自动挂卡；每�
 
 ![预览](assets/preview.png)
 
-在线演示：打开仓库里的 `index.html`（或启用后的 GitHub Pages 站点），无需 DSH 即可体验全部交互。
+在线演示：https://lark980-web.github.io/FloatCard/ —— 无需 DSH 即可体验全部交互（真实客户端 bundle + 模拟宿主）。
+
+源码仓库：https://github.com/lark980-web/FloatCard · npm 包名 `dsh-tendedero`（待发布）。
 
 ## 两种追问，都晾在绳子上
 

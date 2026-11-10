@@ -4,7 +4,9 @@ Hang DSH follow-up questions on a clothesline above the window — inspired by [
 
 ![preview](assets/preview.png)
 
-**Live demo:** open [`index.html`](index.html) (or the GitHub Pages site once enabled). It runs the real client bundle against a mock host, so you can try the whole interaction without DSH.
+**Live demo:** https://lark980-web.github.io/FloatCard/ — the real client bundle against a mock host, so you can try the whole interaction without DSH.
+
+**Source:** https://github.com/lark980-web/FloatCard · npm package: `dsh-tendedero` (publish pending npm credentials).
 
 ## What it does
 
